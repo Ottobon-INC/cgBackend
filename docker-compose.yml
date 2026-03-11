@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile.prod
     container_name: cgBackend-api
     ports:
-      - "3005:3000"
+      - "8500:8500"
     environment:
       - NODE_ENV=production
     env_file:
