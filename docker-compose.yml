@@ -4,12 +4,14 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.prod
+      dockerfile: Dockerfile
     container_name: cgBackend-api
     ports:
+      # Mapping host port 8500 to container port 8500
       - "8500:8500"
     environment:
       - NODE_ENV=production
+      - PORT=8500
     env_file:
       - .env
     restart: always
