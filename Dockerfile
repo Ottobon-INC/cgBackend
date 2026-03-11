@@ -28,7 +28,7 @@ COPY --from=builder /app/dist ./dist
 # Keep public folder in case backend serves images/static files locally
 # Create it if it doesn't exist to prevent copy errors
 RUN mkdir -p ./public
-COPY --from=builder /app/public ./public 2>/dev/null || true
+COPY --from=builder /app/public ./public
 
 # Environment configuration
 ENV NODE_ENV=production
