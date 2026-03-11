@@ -1,36 +1,40 @@
-# Stage 1: Build the backend
-FROM node:22-alpine AS builder
-
+# Stage 1: Build
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package config
+# Copy package info
 COPY package*.json ./
 
-# Install dependencies (ignoring scripts)
-RUN npm install --ignore-scripts
+# Install dependencies
+RUN npm install
 
-# Copy the source code
+# Copy source code
 COPY . .
 
-# Build the TypeScript project
+# Compile TypeScript to JavaScript
 RUN npm run build
 
-# Stage 2: Production runner
-FROM node:22-alpine AS runner
-
+# Stage 2: Production
+FROM node:20-alpine
 WORKDIR /app
 
-ENV NODE_ENV=production
+# Copy package.json to install only production deps
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-# Copy built artifacts and dependencies
-COPY --from=builder /app/package*.json ./
+# Copy compiled code from builder
 COPY --from=builder /app/dist ./dist
 
-# Install ONLY production dependencies
-RUN npm install --omit=dev --ignore-scripts
+# Keep public folder in case backend serves images/static files locally
+# Create it if it doesn't exist to prevent copy errors
+RUN mkdir -p ./public
+COPY --from=builder /app/public ./public 2>/dev/null || true
 
-# Expose port
-EXPOSE 8500
+# Environment configuration
+ENV NODE_ENV=production
+ENV PORT=3000
 
-# Start the server
-CMD ["node", "dist/server.js"]
+EXPOSE 3000
+
+# Start compiled server
+CMD ["npm", "start"]
