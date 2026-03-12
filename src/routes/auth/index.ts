@@ -234,4 +234,40 @@ router.post('/users/:id/approve', async (req: Request, res: Response) => {
     }
 });
 
+// Admin Route: Get all users
+router.get('/users', async (_req: Request, res: Response) => {
+    try {
+        const result = await query(
+            'SELECT id, email, is_approved, is_admin, created_at FROM users ORDER BY created_at DESC'
+        );
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('[auth] Fetch all users error:', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// Admin Route: Delete user access
+router.delete('/users/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        
+        // Prevent deleting the very first admin or self, maybe? 
+        // For now just delete the user. The database should handle cascading if needed.
+        const result = await query(
+            'DELETE FROM users WHERE id = $1 RETURNING id, email',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        return res.status(200).json({ success: true, data: result.rows[0], message: 'User deleted successfully' });
+    } catch (err) {
+        console.error('[auth] Delete user error:', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 export default router;
