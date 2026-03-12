@@ -32,9 +32,9 @@ COPY --from=builder /app/public ./public
 
 # Environment configuration
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=8500
 
-EXPOSE 3000
+EXPOSE 8500
 
 # Start compiled server
 CMD ["npm", "start"]
