@@ -9,28 +9,11 @@ services:
       # Map localhost 8500 to container's 3000
       - "8500:3000"
     env_file:
-      - ../.env
+      - .env
     restart: unless-stopped
     volumes:
       # Persist uploaded files across container restarts
       - backend_uploads:/app/public/uploads
-
-  frontend:
-    build:
-      context: ../frontend # Point back up to frontend folder
-      dockerfile: Dockerfile
-      args:
-        # Vite will pick up these variables at build time.
-        # It defaults to NEXT_PUBLIC_API_URL or http://localhost:3000 if not found.
-        VITE_API_URL: ${VITE_API_URL:-${NEXT_PUBLIC_API_URL:-http://localhost:3000}}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
-    container_name: component_hub_frontend
-    ports:
-      # Map localhost 3500 to Nginx's port 80
-      - "3500:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
 
 volumes:
   backend_uploads:
