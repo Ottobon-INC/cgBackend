@@ -202,4 +202,46 @@ router.get('/:id/likers', async (req: Request, res: Response) => {
     }
 });
 
+// ─── DELETE /:id — Delete a component ──────────────────────────────────────────
+router.delete('/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, error: 'Unauthorized: Missing user ID' });
+        }
+
+        // Get the component's author and the requesting user's admin status
+        const authCheck = await query(`
+            SELECT c.author_id, 
+                   (SELECT is_admin FROM users WHERE id = $2) as is_admin
+            FROM components c
+            WHERE c.id = $1
+        `, [id, userId]);
+
+        if (authCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Component not found.' });
+        }
+
+        const { author_id, is_admin } = authCheck.rows[0];
+
+        // Authorization: Must be the author or an admin
+        if (author_id !== userId && !is_admin) {
+            return res.status(403).json({ success: false, error: 'Forbidden: You do not have permission to delete this component.' });
+        }
+
+        // Delete likes first to satisfy potential foreign key constraints (if no cascade)
+        await query('DELETE FROM component_likes WHERE component_id = $1', [id]);
+        
+        // Delete the component
+        await query('DELETE FROM components WHERE id = $1', [id]);
+
+        return res.status(200).json({ success: true, message: 'Component deleted successfully.' });
+    } catch (err) {
+        console.error('[components] Delete error:', err);
+        return res.status(500).json({ success: false, error: 'Failed to delete component.' });
+    }
+});
+
 export default router;
