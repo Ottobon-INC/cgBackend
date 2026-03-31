@@ -13,7 +13,7 @@ const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 const app = createApp();
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
     console.log(`\n🚀 Enterprise Component Hub API`);
     console.log(`   Listening on http://localhost:${PORT}`);
     console.log(`   Environment: ${process.env.NODE_ENV ?? 'development'}`);

@@ -86,7 +86,7 @@ router.post('/', async (req: Request, res: Response<ApiResponse<CliFetchResponse
         //     RETURNING * avoids a separate SELECT round-trip.
         //     Parameterized query prevents SQL injection.
         const updateResult = await client.query<ComponentRow>(
-            `UPDATE components
+            `UPDATE cg_components
        SET usage_count = usage_count + 1
        WHERE id = $1
        RETURNING id, title, description, raw_code, author_id, usage_count`,

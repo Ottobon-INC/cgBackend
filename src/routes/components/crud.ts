@@ -40,7 +40,7 @@ router.get('/list', async (req: Request, res: Response) => {
         }
 
         sql += `
-            FROM components c
+            FROM cg_components c
             LEFT JOIN users u ON u.id = c.author_id`;
 
         const values: string[] = [];
@@ -77,7 +77,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         }
 
         sql += `
-             FROM components c
+             FROM cg_components c
              LEFT JOIN users u ON u.id = c.author_id
              WHERE c.id = $1`;
 
@@ -123,16 +123,17 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         const sql = `
-            INSERT INTO components (title, description, raw_code, author_id, stack, category, image_url${embeddingClause ? ', embedding' : ''})
+            INSERT INTO cg_components (title, description, raw_code, author_id, stack, category, image_url${embeddingClause ? ', embedding' : ''})
             VALUES ($1, $2, $3, $4, $5, $6, $7${embeddingClause ? ', $8::vector(1536)' : ''})
             RETURNING id, title, description, author_id, usage_count, likes, stack, category, image_url, created_at
         `;
 
         const result = await query(sql, values);
         return res.status(201).json({ success: true, data: result.rows[0] });
-    } catch (err) {
+    } catch (err: any) {
         console.error('[components] Create error:', err);
-        return res.status(500).json({ success: false, error: 'Failed to create component.' });
+        require('fs').appendFileSync('error.log', new Date().toISOString() + ' ' + (err.stack || err.message || err) + '\n');
+        return res.status(500).json({ success: false, error: 'Failed to create component.', details: err.message });
     }
 });
 
@@ -148,27 +149,27 @@ router.post('/:id/like', async (req: Request, res: Response) => {
     try {
         // Check if this user already liked this component
         const existing = await query(
-            'SELECT id FROM component_likes WHERE component_id = $1 AND user_id = $2',
+            'SELECT id FROM cg_component_likes WHERE component_id = $1 AND user_id = $2',
             [id, user_id]
         );
 
         let liked: boolean;
         if (existing.rows.length > 0) {
             // Already liked — unlike it
-            await query('DELETE FROM component_likes WHERE component_id = $1 AND user_id = $2', [id, user_id]);
-            await query('UPDATE components SET likes = GREATEST(0, likes - 1) WHERE id = $1', [id]);
+            await query('DELETE FROM cg_component_likes WHERE component_id = $1 AND user_id = $2', [id, user_id]);
+            await query('UPDATE cg_components SET likes = GREATEST(0, likes - 1) WHERE id = $1', [id]);
             liked = false;
         } else {
             // Not yet liked — insert and increment
             await query(
-                'INSERT INTO component_likes (component_id, user_id) VALUES ($1, $2)',
+                'INSERT INTO cg_component_likes (component_id, user_id) VALUES ($1, $2)',
                 [id, user_id]
             );
-            await query('UPDATE components SET likes = likes + 1 WHERE id = $1', [id]);
+            await query('UPDATE cg_components SET likes = likes + 1 WHERE id = $1', [id]);
             liked = true;
         }
 
-        const updated = await query('SELECT likes FROM components WHERE id = $1', [id]);
+        const updated = await query('SELECT likes FROM cg_components WHERE id = $1', [id]);
         return res.status(200).json({
             success: true,
             data: { liked, likes: updated.rows[0]?.likes ?? 0 }
@@ -185,7 +186,7 @@ router.get('/:id/likers', async (req: Request, res: Response) => {
         const { id } = req.params;
         const result = await query(
             `SELECT COALESCE(u.name, split_part(u.email, '@', 1)) AS name
-             FROM component_likes cl
+             FROM cg_component_likes cl
              JOIN users u ON u.id = cl.user_id
              WHERE cl.component_id = $1
              ORDER BY cl.created_at ASC
@@ -216,7 +217,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
         const authCheck = await query(`
             SELECT c.author_id, 
                    (SELECT is_admin FROM users WHERE id = $2) as is_admin
-            FROM components c
+            FROM cg_components c
             WHERE c.id = $1
         `, [id, userId]);
 
@@ -232,10 +233,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
         }
 
         // Delete likes first to satisfy potential foreign key constraints (if no cascade)
-        await query('DELETE FROM component_likes WHERE component_id = $1', [id]);
+        await query('DELETE FROM cg_component_likes WHERE component_id = $1', [id]);
         
         // Delete the component
-        await query('DELETE FROM components WHERE id = $1', [id]);
+        await query('DELETE FROM cg_components WHERE id = $1', [id]);
 
         return res.status(200).json({ success: true, message: 'Component deleted successfully.' });
     } catch (err) {

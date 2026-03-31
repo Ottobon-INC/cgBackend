@@ -17,6 +17,7 @@ import cliRouter from './routes/cli/fetch';
 import authRouter from './routes/auth/index';
 import categoriesRouter from './routes/categories/index';
 import uploadRouter from './routes/upload';
+import extractRouter from './routes/extract/index';
 import path from 'path';
 
 // ─── App Factory ──────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export function createApp(): Application {
     app.use('/api/auth', authRouter);
     app.use('/api/categories', categoriesRouter);
     app.use('/api/upload', uploadRouter);
+    app.use('/api/extract', extractRouter);
 
     // Expose uploads directory so the frontend can render images via `<img src="http://localhost:3000/uploads/..." />`
     app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));

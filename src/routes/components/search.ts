@@ -101,7 +101,7 @@ router.post('/', async (req: Request, res: Response<ApiResponse<SearchResponse>>
             SELECT 
                 id, title, description, author_id, usage_count, likes, created_at,
                 1.0 AS similarity -- Fake perfect match for lexical fallback
-            FROM components
+            FROM cg_components
             WHERE title ILIKE $1 OR description ILIKE $1
             LIMIT $2
         `;
