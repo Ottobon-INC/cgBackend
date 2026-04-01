@@ -19,7 +19,7 @@ const CreateCategorySchema = z.object({
 router.get('/', async (_req: Request, res: Response) => {
     try {
         const result = await query(
-            'SELECT id, label, icon, created_at FROM categories ORDER BY created_at ASC'
+            'SELECT id, label, icon, created_at FROM cg_categories ORDER BY created_at ASC'
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (err) {
@@ -45,13 +45,13 @@ router.post('/', async (req: Request, res: Response) => {
 
     try {
         // Check for duplicate
-        const existing = await query('SELECT id FROM categories WHERE id = $1', [id]);
+        const existing = await query('SELECT id FROM cg_categories WHERE id = $1', [id]);
         if (existing.rows.length > 0) {
             return res.status(409).json({ success: false, error: 'A category with this name already exists.' });
         }
 
         const result = await query(
-            'INSERT INTO categories (id, label, icon) VALUES ($1, $2, $3) RETURNING id, label, icon, created_at',
+            'INSERT INTO cg_categories (id, label, icon) VALUES ($1, $2, $3) RETURNING id, label, icon, created_at',
             [id, label, icon]
         );
         return res.status(201).json({ success: true, data: result.rows[0] });

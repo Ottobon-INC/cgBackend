@@ -106,7 +106,7 @@ router.post('/', async (req: Request, res: Response<ApiResponse<CliFetchResponse
 
         // 2b. Insert telemetry log entry.
         await client.query(
-            `INSERT INTO telemetry_logs (component_id, user_id, estimated_hours_saved)
+            `INSERT INTO cg_telemetry_logs (component_id, user_id, estimated_hours_saved)
        VALUES ($1, $2, $3)`,
             [componentId, userId, estimatedHoursSaved]
         );

@@ -33,7 +33,7 @@ router.post('/login', async (req: Request, res: Response) => {
             password_hash: string;
             is_approved: boolean;
             is_admin: boolean;
-        }>('SELECT id, email, name, password_hash, is_approved, is_admin FROM users WHERE email = $1', [email]);
+        }>('SELECT id, email, name, password_hash, is_approved, is_admin FROM cg_users WHERE email = $1', [email]);
 
         if (result.rows.length === 0) {
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
@@ -69,7 +69,7 @@ router.post('/register', async (req: Request, res: Response) => {
     try {
         const { email, password } = LoginSchema.parse(req.body);
 
-        const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
+        const existing = await query('SELECT id FROM cg_users WHERE email = $1', [email]);
         if (existing.rows.length > 0) {
             return res.status(400).json({ success: false, error: 'Email already exists' });
         }
@@ -77,7 +77,7 @@ router.post('/register', async (req: Request, res: Response) => {
         const hash = await bcrypt.hash(password, 10);
 
         // Auto-approve the first user as admin (for bootstrapping). Otherwise, set false.
-        const countRes = await query<{ count: string }>('SELECT COUNT(*) FROM users');
+        const countRes = await query<{ count: string }>('SELECT COUNT(*) FROM cg_users');
         const isFirstUser = parseInt(countRes.rows[0].count, 10) === 0;
 
         const result = await query<{
@@ -86,7 +86,7 @@ router.post('/register', async (req: Request, res: Response) => {
             is_approved: boolean;
             is_admin: boolean;
         }>(
-            'INSERT INTO users (email, password_hash, is_approved, is_admin) VALUES ($1, $2, $3, $4) RETURNING id, email, is_approved, is_admin',
+            'INSERT INTO cg_users (email, password_hash, is_approved, is_admin) VALUES ($1, $2, $3, $4) RETURNING id, email, is_approved, is_admin',
             [email, hash, isFirstUser, isFirstUser]
         );
 
@@ -112,7 +112,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     try {
         const { email } = ForgotPasswordSchema.parse(req.body);
 
-        const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
+        const existing = await query('SELECT id FROM cg_users WHERE email = $1', [email]);
         if (existing.rows.length === 0) {
             // Return success even if email doesn't exist to prevent email enumeration
             return res.status(200).json({ success: true, message: 'If an account exists, a reset link was generated.' });
@@ -123,7 +123,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
         const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
         await query(
-            'UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE email = $3',
+            'UPDATE cg_users SET reset_token = $1, reset_token_expires = $2 WHERE email = $3',
             [token, expiresAt.toISOString(), email]
         );
 
@@ -174,7 +174,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 
         // Find user with matching token that hasn't expired
         const userRes = await query(
-            'SELECT id FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()',
+            'SELECT id FROM cg_users WHERE reset_token = $1 AND reset_token_expires > NOW()',
             [token]
         );
 
@@ -187,7 +187,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 
         // Update password and clear the token
         await query(
-            'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
+            'UPDATE cg_users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
             [hash, userId]
         );
 
@@ -205,7 +205,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 router.get('/users/pending', async (_req: Request, res: Response) => {
     try {
         const result = await query(
-            'SELECT id, email, created_at FROM users WHERE is_approved = false ORDER BY created_at ASC'
+            'SELECT id, email, created_at FROM cg_users WHERE is_approved = false ORDER BY created_at ASC'
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (err) {
@@ -219,7 +219,7 @@ router.post('/users/:id/approve', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await query(
-            'UPDATE users SET is_approved = true WHERE id = $1 RETURNING id, email, is_approved',
+            'UPDATE cg_users SET is_approved = true WHERE id = $1 RETURNING id, email, is_approved',
             [id]
         );
 
@@ -238,7 +238,7 @@ router.post('/users/:id/approve', async (req: Request, res: Response) => {
 router.get('/users', async (_req: Request, res: Response) => {
     try {
         const result = await query(
-            'SELECT id, email, is_approved, is_admin, created_at FROM users ORDER BY created_at DESC'
+            'SELECT id, email, is_approved, is_admin, created_at FROM cg_users ORDER BY created_at DESC'
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (err) {
@@ -255,7 +255,7 @@ router.delete('/users/:id', async (req: Request, res: Response) => {
         // Prevent deleting the very first admin or self, maybe? 
         // For now just delete the user. The database should handle cascading if needed.
         const result = await query(
-            'DELETE FROM users WHERE id = $1 RETURNING id, email',
+            'DELETE FROM cg_users WHERE id = $1 RETURNING id, email',
             [id]
         );
 

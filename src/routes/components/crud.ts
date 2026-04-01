@@ -34,14 +34,14 @@ router.get('/list', async (req: Request, res: Response) => {
                    c.usage_count, c.likes, c.stack, c.category, c.image_url, c.created_at`;
 
         if (userId) {
-            sql += `, EXISTS(SELECT 1 FROM component_likes cl WHERE cl.component_id = c.id AND cl.user_id = $1) AS user_liked`;
+            sql += `, EXISTS(SELECT 1 FROM cg_component_likes cl WHERE cl.component_id = c.id AND cl.user_id = $1) AS user_liked`;
         } else {
             sql += `, false AS user_liked`;
         }
 
         sql += `
             FROM cg_components c
-            LEFT JOIN users u ON u.id = c.author_id`;
+            LEFT JOIN cg_users u ON u.id = c.author_id`;
 
         const values: string[] = [];
         if (userId) values.push(userId);
@@ -71,14 +71,14 @@ router.get('/:id', async (req: Request, res: Response) => {
                    c.usage_count, c.likes, c.stack, c.category, c.image_url, c.created_at`;
 
         if (userId) {
-            sql += `, EXISTS(SELECT 1 FROM component_likes cl WHERE cl.component_id = c.id AND cl.user_id = $2) AS user_liked`;
+            sql += `, EXISTS(SELECT 1 FROM cg_component_likes cl WHERE cl.component_id = c.id AND cl.user_id = $2) AS user_liked`;
         } else {
             sql += `, false AS user_liked`;
         }
 
         sql += `
              FROM cg_components c
-             LEFT JOIN users u ON u.id = c.author_id
+             LEFT JOIN cg_users u ON u.id = c.author_id
              WHERE c.id = $1`;
 
         const values: any[] = [id];
@@ -187,7 +187,7 @@ router.get('/:id/likers', async (req: Request, res: Response) => {
         const result = await query(
             `SELECT COALESCE(u.name, split_part(u.email, '@', 1)) AS name
              FROM cg_component_likes cl
-             JOIN users u ON u.id = cl.user_id
+             JOIN cg_users u ON u.id = cl.user_id
              WHERE cl.component_id = $1
              ORDER BY cl.created_at ASC
              LIMIT 20`,
@@ -216,7 +216,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
         // Get the component's author and the requesting user's admin status
         const authCheck = await query(`
             SELECT c.author_id, 
-                   (SELECT is_admin FROM users WHERE id = $2) as is_admin
+                   (SELECT is_admin FROM cg_users WHERE id = $2) as is_admin
             FROM cg_components c
             WHERE c.id = $1
         `, [id, userId]);

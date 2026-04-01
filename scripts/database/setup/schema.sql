@@ -16,19 +16,22 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ─── Users (Custom NextAuth Credentials) ─────────────────────
 -- Native user table enabling our manual gatekeeping strategy.
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS cg_users (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   email         TEXT        NOT NULL UNIQUE,
+  name          TEXT,
   password_hash TEXT        NOT NULL,
   is_approved   BOOLEAN     NOT NULL DEFAULT false,     -- Must be set to true by Admin to access hub
   is_admin      BOOLEAN     NOT NULL DEFAULT false,     -- Can approve other users
+  reset_token   TEXT,
+  reset_token_expires TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 
 -- ─── Components ───────────────────────────────────────────────
 -- Core registry of all shared React/TypeScript components.
-CREATE TABLE IF NOT EXISTS components (
+CREATE TABLE IF NOT EXISTS cg_components (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   title         TEXT        NOT NULL,
   description   TEXT        NOT NULL,
@@ -36,6 +39,9 @@ CREATE TABLE IF NOT EXISTS components (
   author_id     UUID        NOT NULL,                   -- references your auth users table
   usage_count   INTEGER     NOT NULL DEFAULT 0,         -- incremented by CLI fetch
   likes         INTEGER     NOT NULL DEFAULT 0,
+  stack         TEXT        NOT NULL DEFAULT 'vite-react-ts',
+  category      TEXT        NOT NULL DEFAULT 'uncategorized',
+  image_url     TEXT,
   -- 1536-dim vector produced by text-embedding-ada-002
   embedding     VECTOR(1536),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -44,10 +50,30 @@ CREATE TABLE IF NOT EXISTS components (
 
 -- Hierarchical Navigable Small World (HNSW) index for fast, scalable nearest-neighbor search.
 -- m=16, ef_construction=64 are solid defaults for 1536-dim OpenAI embeddings.
-CREATE INDEX IF NOT EXISTS components_embedding_idx
-  ON components
+CREATE INDEX IF NOT EXISTS cg_components_embedding_idx
+  ON cg_components
   USING hnsw (embedding vector_cosine_ops)
   WITH (m = 16, ef_construction = 64);
+
+
+-- ─── Categories ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cg_categories (
+    id    TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    icon  TEXT NOT NULL DEFAULT '◈',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ─── Component Likes ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cg_component_likes (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    component_id UUID NOT NULL REFERENCES cg_components(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL REFERENCES cg_users(id) ON DELETE CASCADE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(component_id, user_id)
+);
+
 
 -- ─── RPC Component Matching (Semantic Search) ─────────────────
 -- A Supabase Remote Procedure Call (RPC) that uses pgvector's <=> operator
@@ -71,20 +97,21 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    components.id,
-    components.title,
-    components.description,
-    components.author_id,
-    components.usage_count,
-    components.likes,
-    components.created_at,
-    1 - (components.embedding <=> query_embedding) AS similarity
-  FROM components
-  WHERE components.embedding IS NOT NULL
-  ORDER BY components.embedding <=> query_embedding
+    cg_components.id,
+    cg_components.title,
+    cg_components.description,
+    cg_components.author_id,
+    cg_components.usage_count,
+    cg_components.likes,
+    cg_components.created_at,
+    1 - (cg_components.embedding <=> query_embedding) AS similarity
+  FROM cg_components
+  WHERE cg_components.embedding IS NOT NULL
+  ORDER BY cg_components.embedding <=> query_embedding
   LIMIT match_count;
 END;
 $$;
+
 
 -- Trigger to auto-update `updated_at` on every row modification
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -95,14 +122,14 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER components_updated_at
-  BEFORE UPDATE ON components
+CREATE TRIGGER cg_components_updated_at
+  BEFORE UPDATE ON cg_components
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 
 -- ─── Bounties ─────────────────────────────────────────────────
 -- Gamified request board: devs request components they need.
-CREATE TABLE IF NOT EXISTS bounties (
+CREATE TABLE IF NOT EXISTS cg_bounties (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   title         TEXT        NOT NULL,
   description   TEXT        NOT NULL,
@@ -115,17 +142,17 @@ CREATE TABLE IF NOT EXISTS bounties (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TRIGGER bounties_updated_at
-  BEFORE UPDATE ON bounties
+CREATE TRIGGER cg_bounties_updated_at
+  BEFORE UPDATE ON cg_bounties
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 
 -- ─── Telemetry Logs ───────────────────────────────────────────
 -- Immutable ledger: every `hub add <component>` CLI invocation is recorded.
 -- Drives the ROI/hours-saved analytics dashboard.
-CREATE TABLE IF NOT EXISTS telemetry_logs (
+CREATE TABLE IF NOT EXISTS cg_telemetry_logs (
   id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  component_id          UUID        NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+  component_id          UUID        NOT NULL REFERENCES cg_components(id) ON DELETE CASCADE,
   user_id               UUID        NOT NULL,
   timestamp             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   -- Estimated developer hours saved by reusing this component instead of building from scratch.
@@ -133,15 +160,16 @@ CREATE TABLE IF NOT EXISTS telemetry_logs (
 );
 
 -- Index for fast per-component analytics aggregations
-CREATE INDEX IF NOT EXISTS telemetry_component_idx ON telemetry_logs (component_id);
+CREATE INDEX IF NOT EXISTS cg_telemetry_component_idx ON cg_telemetry_logs (component_id);
 -- Index for per-user activity queries
-CREATE INDEX IF NOT EXISTS telemetry_user_idx      ON telemetry_logs (user_id);
+CREATE INDEX IF NOT EXISTS cg_telemetry_user_idx      ON cg_telemetry_logs (user_id);
 
 
 -- ─── Row Level Security (Supabase) ────────────────────────────
 -- Enable RLS so that Supabase auth policies can be applied later.
--- Policies themselves should be added via the Supabase dashboard or
--- additional migration files once your auth strategy is decided.
-ALTER TABLE components     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE bounties       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE telemetry_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cg_users          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cg_components     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cg_bounties       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cg_telemetry_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cg_categories     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cg_component_likes ENABLE ROW LEVEL SECURITY;
