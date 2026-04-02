@@ -14,10 +14,13 @@ const router = Router();
 const VALID_STACKS = ['vite-react-ts', 'vite-react', 'vue', 'svelte', 'angular', 'vanilla', 'static'] as const;
 
 const CreateComponentSchema = z.object({
-    title: z.string().min(2, 'Title must be at least 2 characters').max(100),
-    description: z.string().min(10, 'Description must be at least 10 characters').max(1000),
-    raw_code: z.string().min(10, 'Code is required').max(50000),
-    author_id: z.string().uuid('author_id must be a valid UUID'),
+    title: z.string().min(2, 'Title must be at least 2 characters').max(100), // 1. Component Name
+    pre_requisites: z.string().optional(),                                   // 2. Pre-Requisits
+    functional_purpose: z.string().min(10, 'Required').max(2000),            // 3. Functional Purpose
+    raw_code: z.string().min(10, 'Code is required').max(50000),             // 4. Code Snippet
+    component_constraint: z.string().optional(),                             // 5. Component Constraint
+    technical_implementation: z.string().optional(),                         // 6. Technical Implementation
+    author_id: z.string().uuid('author_id must be a valid UUID'),            // 7. Author
     stack: z.enum(VALID_STACKS).default('vite-react-ts'),
     category: z.string().max(50).default('uncategorized'),
     image_url: z.string().optional(),
@@ -29,7 +32,8 @@ router.get('/list', async (req: Request, res: Response) => {
         const category = req.query.category as string | undefined;
         const userId = req.query.userId as string | undefined;
 
-        let sql = `SELECT c.id, c.title, c.description, c.raw_code, c.author_id,
+        let sql = `SELECT c.id, c.title, c.pre_requisites, c.functional_purpose, c.raw_code, 
+                   c.component_constraint, c.technical_implementation, c.author_id,
                    COALESCE(u.name, split_part(u.email, '@', 1)) AS author_name,
                    c.usage_count, c.likes, c.stack, c.category, c.image_url, c.created_at`;
 
@@ -66,7 +70,8 @@ router.get('/:id', async (req: Request, res: Response) => {
         const { id } = req.params;
         const userId = req.query.userId as string | undefined;
 
-        let sql = `SELECT c.id, c.title, c.description, c.raw_code, c.author_id,
+        let sql = `SELECT c.id, c.title, c.pre_requisites, c.functional_purpose, c.raw_code,
+                   c.component_constraint, c.technical_implementation, c.author_id,
                    COALESCE(u.name, split_part(u.email, '@', 1)) AS author_name,
                    c.usage_count, c.likes, c.stack, c.category, c.image_url, c.created_at`;
 
@@ -106,33 +111,38 @@ router.post('/', async (req: Request, res: Response) => {
         });
     }
 
-    const { title, description, raw_code, author_id, stack, category, image_url } = parsed.data;
+    const { title, pre_requisites, functional_purpose, raw_code, component_constraint, technical_implementation, author_id, stack, category, image_url } = parsed.data;
 
     try {
-        // Attempt to generate an embedding — gracefully skip if LLM is unavailable
         let embeddingClause = '';
-        const values: unknown[] = [title, description, raw_code, author_id, stack, category, image_url || null];
+        const values: unknown[] = [
+            title, pre_requisites, functional_purpose, raw_code, component_constraint, 
+            technical_implementation, author_id, stack, category, image_url || null
+        ];
 
         try {
             const { generateComponentEmbedding } = await import('../../services/embedding');
-            const vector = await generateComponentEmbedding(title, description, raw_code);
-            embeddingClause = `, embedding = $8::vector(1536)`;
+            const vector = await generateComponentEmbedding(title, functional_purpose, raw_code);
+            embeddingClause = `, embedding = $11::vector(1536)`;
             values.push(`[${vector.join(',')}]`);
         } catch (embErr) {
-            console.warn('[components] Embedding generation skipped (LLM unavailable):', embErr);
+            console.warn('[components] Embedding generation skipped:', embErr);
         }
 
         const sql = `
-            INSERT INTO cg_components (title, description, raw_code, author_id, stack, category, image_url${embeddingClause ? ', embedding' : ''})
-            VALUES ($1, $2, $3, $4, $5, $6, $7${embeddingClause ? ', $8::vector(1536)' : ''})
-            RETURNING id, title, description, author_id, usage_count, likes, stack, category, image_url, created_at
+            INSERT INTO cg_components (
+                title, pre_requisites, functional_purpose, raw_code, 
+                component_constraint, technical_implementation, author_id, 
+                stack, category, image_url${embeddingClause ? ', embedding' : ''}
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10${embeddingClause ? ', $11::vector(1536)' : ''})
+            RETURNING id, title, pre_requisites, functional_purpose, raw_code, component_constraint, technical_implementation, author_id, usage_count, likes, stack, category, image_url, created_at
         `;
 
         const result = await query(sql, values);
         return res.status(201).json({ success: true, data: result.rows[0] });
     } catch (err: any) {
         console.error('[components] Create error:', err);
-        require('fs').appendFileSync('error.log', new Date().toISOString() + ' ' + (err.stack || err.message || err) + '\n');
         return res.status(500).json({ success: false, error: 'Failed to create component.', details: err.message });
     }
 });
